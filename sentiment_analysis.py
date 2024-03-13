@@ -1,11 +1,12 @@
 # sentiment_analysis.py
 
-# Import necessary libraries
 from pyspark.sql import SparkSession
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from pyspark.ml.feature import HashingTF, IDF, Tokenizer
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml import Pipeline
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from azure.storage.blob import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
 
 # Initialize SparkSession
 spark = SparkSession.builder \
@@ -13,7 +14,12 @@ spark = SparkSession.builder \
     .getOrCreate()
 
 # Load the tweets from Azure Blob Storage
-tweets_df = spark.read.json("wasbs://<container_name>@<storage_account_name>.blob.core.windows.net/twitter-data/*.json")
+try:
+    tweets_df = spark.read.json("wasbs://<container_name>@<storage_account_name>.blob.core.windows.net/twitter-data/*.json")
+except ResourceNotFoundError:
+    print("Error: Could not find data in Azure Blob Storage. Make sure the path is correct.")
+    spark.stop()
+    exit(1)
 
 # Initialize the sentiment analyzer
 sia = SentimentIntensityAnalyzer()
@@ -52,7 +58,11 @@ accuracy = predictions.filter(predictions.label == predictions.prediction).count
 print("Accuracy:", accuracy)
 
 # Write the results to Azure Blob Storage
-predictions.write.mode('overwrite').json("wasbs://<container_name>@<storage_account_name>.blob.core.windows.net/twitter-sentiment")
+try:
+    predictions.write.mode('overwrite').json("wasbs://<container_name>@<storage_account_name>.blob.core.windows.net/twitter-sentiment")
+    print("Results written to Azure Blob Storage successfully.")
+except Exception as e:
+    print("Error occurred while writing results to Azure Blob Storage:", str(e))
 
 # Stop SparkSession
 spark.stop()
